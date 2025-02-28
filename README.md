@@ -18,6 +18,9 @@ BNS Mover is a specialized tool designed to streamline the transfer of multiple 
 ## Disclaimer
 This software has been thoroughly tested and contains no known errors. However, the user assumes all responsibility when utilizing this tool. The author is not liable for any unintended transactions, losses, or issues that may arise from its use.
 
+## Preview
+https://eriqferrari.github.io/bns-mover/
+
 ## License
 This project is licensed under the MIT License.
 
