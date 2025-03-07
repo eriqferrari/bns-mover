@@ -37,7 +37,7 @@ export const ConnectProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [signedIn, setIsSignedIn] = useState(userSession.isUserSignedIn());
   const router = useRouter();
-  const NETWORK = process.env.NEXT_PUBLIC_NETWORK || 'testnet';
+  const NETWORK = process.env.NEXT_PUBLIC_NETWORK || 'mainnet';
 
   useEffect(() => {
     if (signedIn) {
