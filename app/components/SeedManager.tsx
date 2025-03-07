@@ -25,8 +25,8 @@ import {
 } from '../utils';
 import { decodeFQNToString, decodeFQNSimple } from "@/components/decodeFQNToString";
 import { generateWallet, generateSecretKey, getStxAddress, restoreWalletAccounts } from '@stacks/wallet-sdk';
-import { TransactionVersion,  makeContractCall ,sponsorTransaction , deserializeTransaction, broadcastTransaction, Cl, Pc} from '@stacks/transactions';
-import { bytesToHex } from '@stacks/common';
+import { TransactionVersion,  makeContractCall ,sponsorTransaction , deserializeTransaction, broadcastTransaction, Cl, Pc, AnchorMode} from '@stacks/transactions';
+import { bytesToHex, createApiKeyMiddleware, createFetchFn } from '@stacks/common';
 import BNSicon from "@/assets/images/icon.png"
 
 interface Wallet {
@@ -59,7 +59,13 @@ interface Account {
   index: number;
 }
 
+const apiMiddleware = createApiKeyMiddleware({
 
+  apiKey: process.env.NEXT_PUBLIC_API,
+
+});
+
+const customFetchFn = createFetchFn(apiMiddleware);
 
 
 export default function SeedManager() {
@@ -83,6 +89,7 @@ export default function SeedManager() {
   const [sponsorBalance,setSponsorBalance] = useState<number>(0)
   const [open, setOpen] = useState<boolean>(true)
   const { theme, setTheme } = useTheme();
+  const [busy, setBusy] = useState<boolean>(false)
 
 
   useEffect(() => {
@@ -115,7 +122,7 @@ export default function SeedManager() {
 
     const accs = restoredWallet.accounts
     const sponsorAcc = getStxAddress({ account: accs[0], transactionVersion: "mainnet" })
-    const url = `${getHiroApi()}/address/${sponsorAcc}/balances?unanchored=true`;
+    const url = `${getHiroApi()}/address/${sponsorAcc}`;
     getBalance(url); 
     setWallet(restoredWallet)
     setTotal(accs.length)
@@ -144,7 +151,7 @@ export default function SeedManager() {
   }
 
   const getBalance = async (url: string) => {
-    const response = await fetch(url);
+    const response = await fetch(url+"/balances?unanchored=true" );
 
     if (!response.ok) {
       throw new Error(`Response status: ${response.status}`);
@@ -154,6 +161,7 @@ export default function SeedManager() {
 
    
   };
+
 
   const NavBar = () => {
     return (
@@ -198,6 +206,7 @@ export default function SeedManager() {
 
   const refresh = () => {
     setLoading(true)
+
     setTimeout(() => setLoading(false), 1000)
   }
 
@@ -233,7 +242,9 @@ export default function SeedManager() {
             />
             <span className="flex items-center"><span className="absolute text-gray-500 -ml-10">STX</span></span>
           </span>
+
           </h4>
+          
           {loading ? 
             <div className="flex items-center justify-center p-4 mt-4 ">
               <Loader2 className="w-10 h-10 my-16 animate-spin" />
@@ -260,7 +271,15 @@ export default function SeedManager() {
               <span className="whitespace-nowrap py-2 w-1/4">
                 <OwnerBox owner={li.address || ""} view="long"/>
               </span>
-              <WalletNames address={li.address} user={profile.stxAddress.mainnet} account={li.account} mainKey={mainKey} fee={Number(fee) * 10**6}/>
+              <WalletNames 
+                address={li.address} 
+                user={profile.stxAddress.mainnet} 
+                account={li.account} 
+                mainKey={mainKey} 
+                fee={Number(fee) * 10**6}
+                busy={busy}
+                setBusy={setBusy}
+                />
               </li>
               )}
             </ul>
@@ -370,7 +389,15 @@ export default function SeedManager() {
 
 
 
-function WalletNames({address, user, account, mainKey, fee}) {
+function WalletNames({address, user, account, mainKey, fee, busy, setBusy}:{
+  address: string; 
+  user: string; 
+  account: Account;
+  mainKey: string; 
+  fee: number;
+  busy: boolean;
+  setBusy: (value: boolean) => void;
+}) {
 
 const [names, setNames] = useState<Domain[]>([])
 const [total, setTotal] = useState<number>(0)
@@ -379,6 +406,7 @@ const [loaded, setLoaded] = useState<boolean>(false)
 const [ready, setReady] = useState<boolean>(false)
 const [done, setDone] = useState<boolean>(false)
 const [isSending, setSending] = useState<boolean>(false)
+const [txSent, setTxSent] = useState<string>("")
 
 useEffect(() => {
     if (address && !loaded) {setLoaded(true); fetchNames(); }
@@ -404,6 +432,7 @@ const fetchNames = async () => {
 
 const handleTransfer = async (id: number) => {
 setSending(true)
+setBusy(true)
 const nftConditions = Pc.principal(address).willSendAsset().nft("SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2::BNS-V2", Cl.uint(id));
 
 const txOptions = {
@@ -417,7 +446,10 @@ const txOptions = {
     validateWithAbi: true,
     sponsored: true,
     network: "mainnet",
-
+    anchorMode: AnchorMode.Any,
+    client: {
+      fetch: customFetchFn,
+    },
   };
 
 const transaction = await makeContractCall(txOptions);
@@ -429,6 +461,10 @@ const sponsorOptions = {
   sponsorPrivateKey: mainKey,
   fee: fee,
   network: "mainnet",
+  anchorMode: AnchorMode.Any,
+    client: {
+      fetch: customFetchFn,
+  },
 };
 const sponsoredTx = await sponsorTransaction(sponsorOptions);
 
@@ -441,7 +477,7 @@ const broadcastResponse = await broadcastTransaction({
 const txId = broadcastResponse.txid;
 setDone(true)
 setSending(false)
-
+setBusy(false)
 }
 
 
@@ -478,11 +514,13 @@ if (total > 1) {
 return (
   <span className="flex w-1/2 items-center justify-between">
   {decodeFQNToString(names[0].full_name)}
+
   <Button 
     className="text-sm flex items-center"
-    disabled={done || fee === 0}
+    disabled={done || fee === 0 || busy}
     onClick={()=> handleTransfer(id)}
   >
+
   {isSending ? <Loader2 className="w-3 h-3 mx-6 animate-spin" /> : done ? "Tx sent" : "Transfer"}
   </Button>
   </span>
